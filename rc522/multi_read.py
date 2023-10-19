@@ -4,33 +4,41 @@ import RPi.GPIO as GPIO
 import MFRC522_multi
 import signal
 
-def end_read(signal,frame):
-    global continue_reading
-    print("Ctrl+C captured, ending read.")
-    continue_reading = False
-    GPIO.cleanup()
 
-def read(sensor_num):
-    RC522.MFRC522_Init(sensor_num)
+# MFRC522 객체와 활성화 할 센서의 rst 핀 번호의 배열을 넘겨줌
+def read(object, active_num_arr):
+    # 결과 반환할 딕셔너리, 각 센서별 값 -1로 초기화
+    result = dict.fromkeys(active_num_arr, -1)
 
-    for i in range(3):
-        print("try read")
-        # Scan for cards
-        (status,TagType) = RC522.MFRC522_Request(RC522.PICC_REQIDL)
+    # 활성화 할 센서들 순회
+    for i in range(active_num_arr):
+        object.MFRC522_Init(active_num_arr[i])
 
-        # Get the UID of the card
-        (status,uid) = RC522.MFRC522_Anticoll()
+        # 인식 오류 대비 센서당 3번씩 인식
+        for j in range(3):
+            # Scan for cards
+            (status,TagType) = object.MFRC522_Request(RC522.PICC_REQIDL)
 
-        # If we have the UID, continue
-        if status == RC522.MI_OK:
-            # Print UID
-            print("Card read UID: %s,%s,%s,%s" % (uid[0], uid[1], uid[2], uid[3]))
-            return uid
+            # Get the UID of the card
+            (status,uid) = object.MFRC522_Anticoll()
 
-    return -1
+            # If we have the UID, continue
+            if status == object.MI_OK:
+                # 딕셔너리에 uid 값 저장
+                result[active_num_arr[i]] = f'${uid[0]}${uid[1]}${uid[2]}${uid[3]}'
+                break
+
+    return result
 
 
 if __name__ == "__main__":
+    def end_read(signal,frame):
+        print("Ctrl+C captured.")
+        GPIO.cleanup()
+
+
+    sensor_name = ['센서0', '센서1', '센서2']
+
     # Hook the SIGINT
     signal.signal(signal.SIGINT, end_read)
 
@@ -38,6 +46,8 @@ if __name__ == "__main__":
     RC522 = MFRC522_multi.MFRC522([16, 18, 22])
 
     while True:
-        read_sensor_num = input("RFID reader select (16, 18, 22) >> ")
-        RC522.MFRC522_Init(read_sensor_num)
-        read(read_sensor_num)
+        result = read(RC522, [16, 18, 22])
+
+        # result의 결과값에서 -1이 아닌 값만 처리
+        for i in result:
+            print(f'pin {i} : {result[i]}' if result[i] != -1 else f'pin {i} : not detected')

@@ -33,21 +33,29 @@ import threading
 import requests
 import json
 from hc_sr04 import *
-from parking.rc522 import *
+from rc522.MFRC522_multi import MFRC522_multi
+from rc522.multi_read import Read_multi
 
 
-#seat_length = 500      # 주차 자리 길이, 1초마다 체크하는 기준
-seat_length = 20        # 프로토타입 주차 자리 길이
-sensor_num = 3          # 주차장 자리(센서)의 수
+#SEAT_LENGTH = 500       # 주차 자리 길이, 1초마다 체크하는 기준
+SEAT_LENGTH = 20        # 프로토타입 주차 자리 길이
+SENSOR_NUM = 3          # 주차장 자리(센서)의 수
+#TIME_LIMIT = 60         # RFID 리더기 인식 제한 시간
+TIME_LIMIT = 7          # 프로토타입 RFID 리더기 인식 제한 시간
+
+
 
 url = ''                # 추후 백엔드 연결용 주소 저장 변수
 
 # 상태값 저장 리스트
-status = shared_memory.ShareableList([0 for i in range(sensor_num)])
+status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])
 
 manager = multiprocessing.Manager()
 
-# 초음파센서 클래스 객체 리스트
+# rfid 센서 rst 핀 목록 배열 (BOARD)
+rfid = [16, 18, 22]
+
+# 초음파센서 클래스 객체 리스트 (BCM)
 us = manager.list()
 us = ([hc_sr04(13, 16), hc_sr04(19, 20), hc_sr04(26, 21)])
 
@@ -60,9 +68,9 @@ log = manager.list()
 # led 제어 프로세스용 함수
 # 1초에 한주기, 점멸의 경우 0.5초 켜지고 0.5초 꺼지게 구현
 def led():
-    last = [0 for i in range(sensor_num)]   # 이전 상태 저장
+    last = [0 for i in range(SENSOR_NUM)]   # 이전 상태 저장
     led = [(14, 15, 18), (17, 27, 22), (0, 5, 6)]
-    n = [0 for i in range(sensor_num)]      # 반복 횟수 저장
+    n = [0 for i in range(SENSOR_NUM)]      # 반복 횟수 저장
 
     # GPIO 모드 설정, led 핀 output으로 설정
     GPIO.setmode(GPIO.BCM)
@@ -82,13 +90,13 @@ def led():
 
     while True:
         # 각 자리를 순회하면서 이전 상태와 현재 상태 비교
-        for i in range(sensor_num):
+        for i in range(SENSOR_NUM):
             if status[i] != last[i]:    # 상태가 다를경우 반복 횟수 초기화
                 n[i] = 0
             last[i] = status[i]
 
         # 상태별 색, 깜빡임 설정
-        for i in range(sensor_num):
+        for i in range(SENSOR_NUM):
             if last[i] == 0:
                 off(led[i])
             elif last[i] == 1:
@@ -106,9 +114,14 @@ def led():
 
         time.sleep(0.5)
 
-        for i in range(sensor_num):
+        for i in range(SENSOR_NUM):
             if last[i] == 1:
                 off(led[i])
+            elif last[i] == 2:
+                n[i] += 1
+                if n[i] == 3:
+                    n[i] = 0
+                    status[i] = 3
             elif last[i] == 30:
                 off(led[i])
                 n[i] += 1
@@ -143,8 +156,8 @@ def send(type, content):
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
             r = requests.put(url, data=data)
-            if r.status_code != 200:
-                log.append(data)
+            # if r.status_code != 200:
+            #     log.append(data)
         return
     elif type == 11:
         for i in range(t):
@@ -155,9 +168,9 @@ def send(type, content):
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
-            r = requests.put(url, data=data)
-            if r.status_code != 200:
-                log.append(data)
+            # r = requests.put(url, data=data)
+            # if r.status_code != 200:
+            #     log.append(data)
         return
     elif type == 20:
         for i in range(t):
@@ -169,12 +182,13 @@ def send(type, content):
             dic['time'] = content[2]
             data = json.dumps(dic)
             # 읽힌 태그 id를 백엔드로 전송
-            r = requests.put(url, data=data)
-            if r.status_code == 200:
-                response.append((content[0], r.status_code))
-                return
-            else:
-                log.append(data)
+            # r = requests.put(url, data=data)
+            # if r.status_code == 200:
+            #     response.append((content[0], r.status_code))
+            #     return
+            # else:
+            #     log.append(data)
+            return True
         return
     elif type == 21:
         for i in range(t):
@@ -185,9 +199,10 @@ def send(type, content):
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 체크가 안된 자리 번호를 백엔드로 전송
-            r = requests.put(url, data=data)
-            if r.status_code != 200:
-                log.append(data)
+            # r = requests.put(url, data=data)
+            # if r.status_code != 200:
+            #     log.append(data)
+            return True
         return
     elif type == 30:
         # 추가할때 복붙용
@@ -202,10 +217,10 @@ def detect(num):
         time.sleep(1)
         d = us[num].run()
         print("탐지({}) : 상태 {}, 측정거리 {:.2f}".format(num, status[num], d))
-        if d > seat_length:
+        if d > SEAT_LENGTH:
             status[num] = 0
             return
-        elif d > (seat_length / 2):
+        elif d > (SEAT_LENGTH / 2):
             n = 0
             d_array.clear()
             continue
@@ -228,15 +243,15 @@ def detect(num):
 # 500cm 안쪽이 감지된 경우 1초마다 체크
 # 프로토타입의 경우 20cm 기준, 기본 상태에서 5초마다 체크
 def ultrasonic():
-    distance = [None for i in range(sensor_num)]
-    n = [0 for i in range(sensor_num)]
+    distance = [None for i in range(SENSOR_NUM)]
+    n = [0 for i in range(SENSOR_NUM)]
 
     while True:
-        for i in range(sensor_num):
+        for i in range(SENSOR_NUM):
             if status[i] == 0:
                 distance[i] = us[i].run()
                 print("기본({}) : 상태 {}, 측정거리 {:.2f}".format(i, status[i], distance[i]))
-                if distance[i] < seat_length:
+                if distance[i] < SEAT_LENGTH:
                     status[i] = 1
                     # detect를 스레드로 실행
                     detect_t = threading.Thread(target=detect, args=(i,))
@@ -244,7 +259,7 @@ def ultrasonic():
             elif status[i] == 2 or status[i] == 3 or status[i] == 30 or status[i] == 31 or status[i] == 4:
                 distance[i] = us[i].run()
                 print("기본({}) : 상태 {}, 측정거리 {:.2f}".format(i, status[i], distance[i]))
-                if distance[i] > seat_length:
+                if distance[i] > SEAT_LENGTH:
                     n[i] += 1
                     if n[i] == 3:
                         status[i] = 0
@@ -258,75 +273,45 @@ def ultrasonic():
         time.sleep(10)
 
 
-# RFID 리더가 다 작동하지 않아 임시로 만든 테스트용 코드
-# 프로그램 시작시 1, 0값의 리스트를 받아 큐에 저장,
-# 해당 큐에서 뽑아낸 값에 따라 RFID 인식 성공과 실패로 동작하게 설정
+# 각 자리의 상태 확인 -> rfid 활성화가 필요한 자리의
 def rfid():
-    while True:
-        for i in range(sensor_num):
-            if status[i] == 2:
-                time.sleep(3) # rfid 인식 시간용
-                status[i] = 3
-                a = rfid_result.get()
-                if a == 1:
-                    status[i] = 4
-                elif a == 0:
-                    status[i] = 2
-        time.sleep(1)
-
-
-# rc522가 다 죽어버린 관계로 주석처리
-'''
-def rfid():
-    nfc = NFC()
-    nfc.addBoard('0', 23)
-    q = Queue()
-
-    def read(nfc, rfid_num):
-        rfid_id = nfc.read(str(rfid_num))
-        q.put((rfid_num, rfid_id))
-
-    def timer(nfc, rfid_num):
-        r = threading.Thread(target=read, args=(nfc, rfid_num,), daemon=True)
-        r.start()
-        time.sleep(10)
-        if q.empty() == False:
-            info1, info2 = q.get()
-            # t = datetime.datetime.now()
-            # r_t = threading.Thread(target=send, args=(20, (info1, info2, t)))
-            # r_t.start()
+    active_num = []
+    last = [0 for i in range(SENSOR_NUM)]
+    start_time = [-1 for i in range(SENSOR_NUM)]
+    RC522 = MFRC522_multi.MFRC522(rfid)
 
     while True:
-        for i in range(sensor_num):
-            print("rfid {} : 상태 {}".format(i, status[i]))
-            if status[i] == 2:
-                status[i] = 3
-                t = threading.Thread(target=timer, args=(nfc, 0,))
-                t.start()
-        while len(response) != 0:
-            index, check = response.pop(0)
-            if check == 200:
-                # 디비에 있는 rfid id
-                # 초록색 led on
-                if status[index] == 3:
-                    status[index] = 31
-            else:
-                # 디비에 없는 rfid id
-                # 빨간색 led on
-                if status[index] == 3:
-                    status[index] = 30
-        time.sleep(1)
-'''
+        # 이전 상태와 현재 상태 비교, 필요한 처리를 한 후 현재 상태를 배열에 기록
+        for i in range(SENSOR_NUM):
+            if last[i] == status[i]:            # 상태가 동일한 경우 다음 센서로 넘어감
+                continue
+            else:                               # 상태가 다른 경우
+                if status[i] != 3:                  # 현재 상태가 3(rfid 인식 대기)이 아닌 경우
+                    start_time[i] = -1              # 센서시작시간 기록을 초기화
+                else:                               # 현재 상태가 3(rfid 인식 대기)인 경우
+                    start_time[i] = time.time()     # 현재 시간을 센서시작시간으로 기록
+
+            last[i] = status[i]
+
+        active_num.clear()
+        for i in range(SENSOR_NUM):
+            if status[i] == 3:
+                active_num.append(rfid[i])
+        result = Read_multi.read(RC522, rfid)
+
+        # result의 결과값에서 -1이 아닌 값만 처리
+        for p in result:
+            index = rfid.index(p)
+            if time.time() - start_time[index] > TIME_LIMIT:
+                send(21, [index, time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())])
+            if result[p] != -1:
+                print(f'sensor {index} : {result[p]}')
+                # 백엔드에 값을 보내서 확인하는 로직
+                send(20, [index, result[p], time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())])
 
 
 if __name__ == '__main__':
     try:
-        rfid_result = Queue()
-        temp = []
-        temp = input("rfid 결과 배열(공백으로 구분) >> ").split(' ')
-        for i in temp:
-            rfid_result.put(int(i))
-
         p_led = multiprocessing.Process(target=led)
         p_us = multiprocessing.Process(target=ultrasonic)
         p_rfid = multiprocessing.Process(target=rfid)

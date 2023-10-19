@@ -126,13 +126,12 @@ class MFRC522:
 
     serNum = []
 
-    def __init__(self, pin_arr, dev='/dev/spidev0.0', spd=1000000):
+    def __init__(self, pin, dev='/dev/spidev0.0', spd=1000000):
         spi.openSPI(device=dev, speed=spd)
         GPIO.setmode(GPIO.BOARD)
-        self.NRSTPD = pin_arr
-        for readerNum in self.NRSTPD:
-            GPIO.setup(readerNum, GPIO.OUT)
-            GPIO.output(readerNum, 0)
+        self.NRSTPD = pin
+        GPIO.setup(self.NRSTPD, GPIO.OUT)
+        GPIO.output(self.NRSTPD, 0)
 
     def MFRC522_Reset(self):
         self.Write_MFRC522(self.CommandReg, self.PCD_RESETPHASE)
@@ -403,12 +402,8 @@ class MFRC522:
                 print("Authentication error")
             i = i+1
 
-    def MFRC522_Init(self, pin):
-        for readerNum in self.NRSTPD:
-            if (readerNum == pin):
-                GPIO.output(readerNum, 1)
-                continue
-            GPIO.output(readerNum, 0)
+    def MFRC522_Init(self):
+        GPIO.output(self.NRSTPD, 1)
 
         self.MFRC522_Reset()
 
