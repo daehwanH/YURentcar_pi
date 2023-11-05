@@ -19,7 +19,7 @@ def read(object):
         # If we have the UID, continue
         if status == object.MI_OK:
             # uid 값 반환
-            return f'${uid[0]}${uid[1]}${uid[2]}${uid[3]}'
+            return f'${hex(uid[0])[2:]}${hex(uid[1])[2:]}${hex(uid[2])[2:]}${hex(uid[3])[2:]}'
 
     return -1
 

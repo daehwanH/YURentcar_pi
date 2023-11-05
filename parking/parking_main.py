@@ -18,8 +18,6 @@
     31(성공) = 녹색 점멸
     30(실패) = 붉은색 점멸
     4 = 파란색 점등
-
-# 현재 RFID가 작동하지 않아 30, 31은 없는 상태
 '''
 
 
@@ -44,7 +42,6 @@ SENSOR_NUM = 3          # 주차장 자리(센서)의 수
 TIME_LIMIT = 7          # 프로토타입 RFID 리더기 인식 제한 시간
 
 
-
 url = ''                # 추후 백엔드 연결용 주소 저장 변수
 
 # 상태값 저장 리스트
@@ -58,9 +55,6 @@ rfid = [16, 18, 22]
 # 초음파센서 클래스 객체 리스트 (BCM)
 us = manager.list()
 us = ([hc_sr04(13, 16), hc_sr04(19, 20), hc_sr04(26, 21)])
-
-# RFID 백엔드 체크 후 응답을 저장할 리스트
-response = manager.list()
 
 # 백엔드 연결 후 통신 실패시 로그 기록용 리스트
 log = manager.list()
@@ -156,9 +150,11 @@ def send(type, content):
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
             r = requests.put(url, data=data)
-            # if r.status_code != 200:
-            #     log.append(data)
-        return
+            if r.status_code == 200:
+                return True
+            else:
+                log.append(data)
+        return False
     elif type == 11:
         for i in range(t):
             # 차량 출차 확인
@@ -168,42 +164,47 @@ def send(type, content):
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
-            # r = requests.put(url, data=data)
-            # if r.status_code != 200:
-            #     log.append(data)
-        return
+            r = requests.put(url, data=data)
+            if r.status_code == 200:
+                return True
+            else:
+                log.append(data)
+        return False
     elif type == 20:
         for i in range(t):
             # 차량 주차 후 rfid 체크
             print("RFID 인식 : {}번 자리 | ID : {} | 시간 : {}".format(content[0], content[1], content[2]))
-            dic['title'] = 'rf_check'
+            dic['title'] = 'rfid_check'
             dic['site'] = content[0]
             dic['id'] = content[1]
             dic['time'] = content[2]
             data = json.dumps(dic)
             # 읽힌 태그 id를 백엔드로 전송
-            # r = requests.put(url, data=data)
-            # if r.status_code == 200:
-            #     response.append((content[0], r.status_code))
-            #     return
-            # else:
-            #     log.append(data)
-            return True
-        return
+            r = requests.post(url, data=data)
+            if r.status_code == 200:
+                status[content[0]] = 31
+                return True
+            else:
+                log.append(data)
+            
+        return False
     elif type == 21:
         for i in range(t):
             # 차량 주차 후 일정시간동안 rfid 미체크
             print("RFID 미인식 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['title'] = 'rf_uncheck'
+            dic['title'] = 'rfid_uncheck'
             dic['site'] = content[0]
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 체크가 안된 자리 번호를 백엔드로 전송
-            # r = requests.put(url, data=data)
-            # if r.status_code != 200:
-            #     log.append(data)
-            return True
-        return
+            r = requests.post(url, data=data)
+            if r.status_code == 200:
+                status[content[0]] = 30
+                return True
+            else:
+                log.append(data)
+            
+        return False
     elif type == 30:
         # 추가할때 복붙용
         return
@@ -233,9 +234,9 @@ def detect(num):
                 n = 0
             if n == 7:
                 status[num] = 2
-                # t = datetime.datetime.now()
-                # s_t = threading.Thread(target=send, args=(10, (num, t)))
-                # s_t.start()
+                t = datetime.datetime.now()
+                s_t = threading.Thread(target=send, args=(10, (num, t)))
+                s_t.start()
                 return
 
 
@@ -264,9 +265,9 @@ def ultrasonic():
                     if n[i] == 3:
                         status[i] = 0
                         n[i] = 0
-                        # t = datetime.datetime.now()
-                        # s_t = threading.Thread(target=send, args=(11, (i, t)))
-                        # s_t.start()
+                        t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
+                        s_t = threading.Thread(target=send, args=(11, [i, t]))
+                        s_t.start()
                 else:
                     n[i] = 0
 
@@ -303,11 +304,15 @@ def rfid():
         for p in result:
             index = rfid.index(p)
             if time.time() - start_time[index] > TIME_LIMIT:
-                send(21, [index, time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())])
+                t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
+                s_t = threading.Thread(target=send, args=(21, [index, t]))
+                s_t.start()
             if result[p] != -1:
                 print(f'sensor {index} : {result[p]}')
                 # 백엔드에 값을 보내서 확인하는 로직
-                send(20, [index, result[p], time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())])
+                t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
+                s_t = threading.Thread(target=send, args=(20, [index, result[p], t]))
+                s_t.start()
 
 
 if __name__ == '__main__':

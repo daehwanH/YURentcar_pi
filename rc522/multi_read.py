@@ -25,7 +25,7 @@ def read(object, active_num_arr):
             # If we have the UID, continue
             if status == object.MI_OK:
                 # 딕셔너리에 uid 값 저장
-                result[active_num_arr[i]] = f'${uid[0]}${uid[1]}${uid[2]}${uid[3]}'
+                result[active_num_arr[i]] = f'${hex(uid[0])[2:]}${hex(uid[1])[2:]}${hex(uid[2])[2:]}${hex(uid[3])[2:]}'
                 break
 
     return result
