@@ -22,6 +22,11 @@
 
 
 import RPi.GPIO as GPIO
+
+import uvicorn
+from fastapi import FastAPI
+from pydantic import BaseModel
+
 import time
 import datetime
 import multiprocessing
@@ -33,6 +38,19 @@ import json
 from hc_sr04 import *
 from rc522.MFRC522_multi import MFRC522_multi
 from rc522.multi_read import Read_multi
+
+
+class Item(BaseModel):
+    ID: list = []
+
+app = FastAPI()
+
+@app.post("/change-id/")
+async def changeID(item: Item):
+    parkingSpotID = item.ID
+    print(parkingSpotID)
+    return True
+
 
 
 #SEAT_LENGTH = 500       # 주차 자리 길이, 1초마다 체크하는 기준
@@ -48,6 +66,9 @@ url = ''                # 추후 백엔드 연결용 주소 저장 변수
 status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])
 
 manager = multiprocessing.Manager()
+
+# 센서 번호와 DB 자리 id 변환용 배열
+parkingSpotID = []
 
 # rfid 센서 rst 핀 목록 배열 (BOARD)
 rfid = [16, 18, 22]
@@ -134,22 +155,18 @@ def led():
 
 def send(type, content):
     t = 3 # 통신 시도 횟수
-    dic = {
-        'title' : '',
-        'site' : '',
-        'time' : '',
-    }
+    dic = {}
 
     if type == 10:
         for i in range(t):
             # 차량 주차 확인
             print("차량 주차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['title'] = 'parking'
+            dic['type'] = True
             dic['site'] = content[0]
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
-            r = requests.put(url, data=data)
+            r = requests.post(url, data=data)
             if r.status_code == 200:
                 return True
             else:
@@ -159,12 +176,12 @@ def send(type, content):
         for i in range(t):
             # 차량 출차 확인
             print("차량 출차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['title'] = 'exit'
+            dic['type'] = False
             dic['site'] = content[0]
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 자리 번호를 백엔드로 전송
-            r = requests.put(url, data=data)
+            r = requests.post(url, data=data)
             if r.status_code == 200:
                 return True
             else:
@@ -174,7 +191,7 @@ def send(type, content):
         for i in range(t):
             # 차량 주차 후 rfid 체크
             print("RFID 인식 : {}번 자리 | ID : {} | 시간 : {}".format(content[0], content[1], content[2]))
-            dic['title'] = 'rfid_check'
+            dic['type'] = True
             dic['site'] = content[0]
             dic['id'] = content[1]
             dic['time'] = content[2]
@@ -192,8 +209,9 @@ def send(type, content):
         for i in range(t):
             # 차량 주차 후 일정시간동안 rfid 미체크
             print("RFID 미인식 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['title'] = 'rfid_uncheck'
+            dic['type'] = False
             dic['site'] = content[0]
+            dic['id'] = ''
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 체크가 안된 자리 번호를 백엔드로 전송
@@ -234,8 +252,8 @@ def detect(num):
                 n = 0
             if n == 7:
                 status[num] = 2
-                t = datetime.datetime.now()
-                s_t = threading.Thread(target=send, args=(10, (num, t)))
+                t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                s_t = threading.Thread(target=send, args=(10, (parkingSpotID[num], t)))
                 s_t.start()
                 return
 
@@ -265,8 +283,8 @@ def ultrasonic():
                     if n[i] == 3:
                         status[i] = 0
                         n[i] = 0
-                        t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
-                        s_t = threading.Thread(target=send, args=(11, [i, t]))
+                        t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                        s_t = threading.Thread(target=send, args=(11, [parkingSpotID[i], t]))
                         s_t.start()
                 else:
                     n[i] = 0
@@ -304,19 +322,21 @@ def rfid():
         for p in result:
             index = rfid.index(p)
             if time.time() - start_time[index] > TIME_LIMIT:
-                t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
-                s_t = threading.Thread(target=send, args=(21, [index, t]))
+                t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                s_t = threading.Thread(target=send, args=(21, [parkingSpotID[index], t]))
                 s_t.start()
             if result[p] != -1:
                 print(f'sensor {index} : {result[p]}')
                 # 백엔드에 값을 보내서 확인하는 로직
-                t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
-                s_t = threading.Thread(target=send, args=(20, [index, result[p], t]))
+                t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                s_t = threading.Thread(target=send, args=(20, [parkingSpotID[index], result[p], t]))
                 s_t.start()
 
 
 if __name__ == '__main__':
     try:
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+        
         p_led = multiprocessing.Process(target=led)
         p_us = multiprocessing.Process(target=ultrasonic)
         p_rfid = multiprocessing.Process(target=rfid)

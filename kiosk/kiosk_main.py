@@ -41,7 +41,7 @@ from rc522.single_read import Read_single
 TIME_LIMIT = 7          # 프로토타입 RFID 리더기 인식 제한 시간
 
 
-kiosk_url = 'https://google.com'
+kiosk_url = 'https://google.com/'
 url = ''
 box = [14, 15, 18]
 box_led = [2, 3, 4]
@@ -77,21 +77,17 @@ async def boxopen(item: Item, background_tasks: BackgroundTasks):
 
 def send(type, content):
     t = 3 # 통신 시도 횟수
-    dic = {
-        'title' : '',
-        'site' : '',
-        'time' : '',
-    }
+    dic = {}
     
     if type == 20:
         for i in range(t):
             print("RFID 인식 | ID : {} | 시간 : {}".format(content[0], content[1]))
-            dic['title'] = 'rfid_check'
+            dic['type'] = True
             dic['id'] = content[0]
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 읽힌 태그 id를 백엔드로 전송
-            r = requests.put(url, data=data)
+            r = requests.post(url, data=data)
             if r.status_code == 200:
                 status[0] = 11
                 return True
@@ -102,11 +98,12 @@ def send(type, content):
     elif type == 21:
         for i in range(t):
             print("RFID 미인식 | 시간 : {}".format(content[0]))
-            dic['title'] = 'rfid_uncheck'
+            dic['type'] = False
+            dic['id'] = ''
             dic['time'] = content[0]
             data = json.dumps(dic)
             # 체크가 안된 자리 번호를 백엔드로 전송
-            r = requests.put(url, data=data)
+            r = requests.post(url, data=data)
             if r.status_code == 200:
                 status[0] = 10
                 return True
@@ -189,14 +186,13 @@ def rfid():
         result = Read_single.read(RC522)
         
         if time.time() - start_time > TIME_LIMIT:
-            t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
+            t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
             s_t = threading.Thread(target=send, args=(21, [t]))
             s_t.start()
-            send(21, [time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())])
         if result != -1:
             print(f'sensor : {result}')
             # 백엔드에 값을 보내서 확인하는 로직
-            t = time.strftime('%Y-%m-%d %I:%M:%S %p', time.localtime())
+            t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
             s_t = threading.Thread(target=send, args=(20, [result, t]))
             s_t.start()
 
