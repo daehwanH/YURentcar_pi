@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 '''
 키오스크 라즈베리파이 제어용 메인 파일
 웹페이지 작동
@@ -16,6 +18,7 @@
 '''
 
 
+from math import sin
 import RPi.GPIO as GPIO
 
 from selenium import webdriver
@@ -33,8 +36,8 @@ import requests
 import json
 
 from solenoid import *
-from rc522.MFRC522_single import MFRC522_single
-from rc522.single_read import Read_single
+import MFRC522_single
+import single_read
 
 
 #TIME_LIMIT = 60         # RFID 리더기 인식 제한 시간
@@ -183,7 +186,7 @@ def rfid():
         
         last = status[0]
         
-        result = Read_single.read(RC522)
+        result = single_read.read(RC522)
         
         if time.time() - start_time > TIME_LIMIT:
             t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
@@ -204,13 +207,13 @@ if __name__ == "__main__":
         driver = webdriver.Chrome(options=options)
         driver.get(kiosk_url)
         
-        uvicorn.run(app, host="127.0.0.1", port=8000)
-        
         p_led = multiprocessing.Process(target=led)
         p_rfid = multiprocessing.Process(target=rfid)
         
         p_led.start()
         p_rfid.start()
+        
+        uvicorn.run(app, host="127.0.0.1", port=8000)
         
         p_led.join()
         p_rfid.join()

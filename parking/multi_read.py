@@ -11,7 +11,7 @@ def read(object, active_num_arr):
     result = dict.fromkeys(active_num_arr, -1)
 
     # 활성화 할 센서들 순회
-    for i in range(active_num_arr):
+    for i in range(len(active_num_arr)):
         object.MFRC522_Init(active_num_arr[i])
 
         # 인식 오류 대비 센서당 3번씩 인식

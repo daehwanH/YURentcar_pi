@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 '''
 주차장 라즈베리파이 제어용 메인 파일
 서버 통신, 센서 인식, 상태에 따른 센서 인식 여부 제어
@@ -26,6 +28,7 @@ import RPi.GPIO as GPIO
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
+from typing import List
 
 import time
 import datetime
@@ -36,12 +39,12 @@ import threading
 import requests
 import json
 from hc_sr04 import *
-from rc522.MFRC522_multi import MFRC522_multi
-from rc522.multi_read import Read_multi
+import MFRC522_multi
+import multi_read
 
 
 class Item(BaseModel):
-    ID: list = []
+    ID: list[int]
 
 app = FastAPI()
 
@@ -68,7 +71,7 @@ status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])
 manager = multiprocessing.Manager()
 
 # 센서 번호와 DB 자리 id 변환용 배열
-parkingSpotID = []
+parkingSpotID = [1, 2, 3]
 
 # rfid 센서 rst 핀 목록 배열 (BOARD)
 rfid = [16, 18, 22]
@@ -197,7 +200,7 @@ def send(type, content):
             dic['time'] = content[2]
             data = json.dumps(dic)
             # 읽힌 태그 id를 백엔드로 전송
-            r = requests.post(url, data=data)
+            r = requests.post(url+'rfid/', data=data)
             if r.status_code == 200:
                 status[content[0]] = 31
                 return True
@@ -215,7 +218,7 @@ def send(type, content):
             dic['time'] = content[1]
             data = json.dumps(dic)
             # 체크가 안된 자리 번호를 백엔드로 전송
-            r = requests.post(url, data=data)
+            r = requests.post(url+'rfid/', data=data)
             if r.status_code == 200:
                 status[content[0]] = 30
                 return True
@@ -316,7 +319,7 @@ def rfid():
         for i in range(SENSOR_NUM):
             if status[i] == 3:
                 active_num.append(rfid[i])
-        result = Read_multi.read(RC522, rfid)
+        result = multi_read.read(RC522, rfid)
 
         # result의 결과값에서 -1이 아닌 값만 처리
         for p in result:
@@ -335,8 +338,6 @@ def rfid():
 
 if __name__ == '__main__':
     try:
-        uvicorn.run(app, host="127.0.0.1", port=8000)
-        
         p_led = multiprocessing.Process(target=led)
         p_us = multiprocessing.Process(target=ultrasonic)
         p_rfid = multiprocessing.Process(target=rfid)
@@ -344,6 +345,8 @@ if __name__ == '__main__':
         p_led.start()
         p_us.start()
         p_rfid.start()
+        
+        uvicorn.run(app, host="127.0.0.1", port=8000)
 
         p_led.join()
         p_us.join()
