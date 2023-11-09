@@ -191,18 +191,25 @@ def rfid():
         
         last = status[0]
         
-        result = single_read.read(RC522)
+        while True:
+            if status[0] != 1:
+                start_time = -1
+                break
+            
+            result = single_read.read(RC522)
         
-        if time.time() - start_time > TIME_LIMIT:
-            t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-            s_t = threading.Thread(target=send, args=(21, [t]))
-            s_t.start()
-        if result != -1:
-            print(f'sensor : {result}')
-            # 백엔드에 값을 보내서 확인하는 로직
-            t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-            s_t = threading.Thread(target=send, args=(20, [result, t]))
-            s_t.start()
+            if time.time() - start_time > TIME_LIMIT:
+                t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                s_t = threading.Thread(target=send, args=(21, [t]))
+                s_t.start()
+                time.sleep(1)
+            if result != -1:
+                print(f'sensor : {result}')
+                # 백엔드에 값을 보내서 확인하는 로직
+                t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
+                s_t = threading.Thread(target=send, args=(20, [result, t]))
+                s_t.start()
+                time.sleep(1)
 
 
 if __name__ == "__main__":
