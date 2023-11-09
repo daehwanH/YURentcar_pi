@@ -128,7 +128,7 @@ class MFRC522:
 
     def __init__(self, pin_arr, dev='/dev/spidev0.0', spd=1000000):
         spi.openSPI(device=dev, speed=spd)
-        GPIO.setmode(GPIO.BOARD)
+        GPIO.setmode(GPIO.BCM)
         self.NRSTPD = pin_arr
         for readerNum in self.NRSTPD:
             GPIO.setup(readerNum, GPIO.OUT)

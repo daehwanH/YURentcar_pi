@@ -74,7 +74,7 @@ manager = multiprocessing.Manager()
 parkingSpotID = [1, 2, 3]
 
 # rfid 센서 rst 핀 목록 배열 (BOARD)
-rfid = [16, 18, 22]
+rfid = [23, 24, 25]
 
 # 초음파센서 클래스 객체 리스트 (BCM)
 us = manager.list()
@@ -346,7 +346,7 @@ if __name__ == '__main__':
         p_us.start()
         p_rfid.start()
         
-        uvicorn.run(app, host="127.0.0.1", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8000)
 
         p_led.join()
         p_us.join()

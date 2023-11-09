@@ -18,7 +18,6 @@
 '''
 
 
-from math import sin
 import RPi.GPIO as GPIO
 
 from selenium import webdriver
@@ -63,6 +62,11 @@ class Item(BaseModel):
 
 app = FastAPI()
 
+@app.post("/")
+async def rfid_activation():
+    status[0] = 1
+    return True
+
 @app.post("/receive-car-key/")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
     print(item.num)
@@ -72,6 +76,7 @@ async def boxopen(item: Item, background_tasks: BackgroundTasks):
 
 @app.post("/return-car-key/")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
+    status[0] = 0
     print(item.num)
     print(type(item.num))
     background_tasks.add_task(sol.box_open, item.num)
@@ -174,7 +179,7 @@ def led():
 def rfid():
     last = 0
     start_time = -1
-    RC522 = MFRC522_single.MFRC522()
+    RC522 = MFRC522_single.MFRC522(25)
     while True:
         if last == status[0]:
             continue
@@ -213,11 +218,13 @@ if __name__ == "__main__":
         p_led.start()
         p_rfid.start()
         
-        uvicorn.run(app, host="127.0.0.1", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8000)
         
         p_led.join()
         p_rfid.join()
 
     except KeyboardInterrupt:
+        status.shm.close()
+        status.shm.unlink()
         driver.close()
         GPIO.cleanup()
