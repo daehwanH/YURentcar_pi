@@ -28,13 +28,10 @@ import RPi.GPIO as GPIO
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List
 
 import time
-import datetime
 import multiprocessing
 from multiprocessing import shared_memory
-from queue import Queue
 import threading
 import requests
 import json
