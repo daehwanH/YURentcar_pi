@@ -18,6 +18,7 @@
 import RPi.GPIO as GPIO
 
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
 import uvicorn
@@ -38,7 +39,6 @@ TIME_LIMIT = 10          # 프로토타입 RFID 리더기 인식 제한 시간
 
 
 webpage_url = 'https://google.com/'
-url = ''
 box = [14, 15, 18]
 box_led = [2, 3, 4]
 sol = solenoid(box, box_led)
@@ -149,7 +149,8 @@ if __name__ == "__main__":
     try:
         options = Options()
         options.add_argument('--kiosk')
-        driver = webdriver.Chrome(options=options)
+        service = Service("/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
         driver.get(webpage_url)   
         
         p_led = multiprocessing.Process(target=led)
