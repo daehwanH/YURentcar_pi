@@ -53,34 +53,38 @@ manager = multiprocessing.Manager()
 log = manager.list()
 
 class Item(BaseModel):
-    num: int
+    kioskId: list
+    slotNumber: list
 
 app = FastAPI()
 
-@app.post("/")
-async def rfid_activation():
-    status[0] = 1
-    return True
 
 @app.post("/rfid-return")
 async def rfid_return():
+    status[0] = 1
     print('rfid active')
     return rfid()[0]
 
 @app.post("/receive-car-key")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
-    print(item.num)
-    print(type(item.num))
-    background_tasks.add_task(sol.box_open, item.num)
-    return  { 'box_number' : item }
+    if int(item.slotNumber[0]) == 1 or int(item.slotNumber[0]) == 2 or int(item.slotNumber[0]) == 3:
+        background_tasks.add_task(sol.box_open, int(item.slotNumber[0])-1)
+        return True
+    else :
+        return False
 
 @app.post("/return-car-key")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
-    status[0] = 0
-    print(item.num)
-    print(type(item.num))
-    background_tasks.add_task(sol.box_open, item.num)
-    return  { 'box_number' : item }
+    if int(item.slotNumber[0]) == 1 or int(item.slotNumber[0]) == 2 or int(item.slotNumber[0]) == 3:
+        status[0] = 0
+        background_tasks.add_task(sol.box_open, int(item.slotNumber[0])-1)
+        return True
+    else :
+        return False
+
+@app.post("/")
+async def rfid_activation():
+    return True
 
 
 def led():
@@ -140,10 +144,10 @@ def rfid():
         
 
 def end_program(signal,frame):
-    print("Ctrl+C captured.")
     status.shm.close()
     status.shm.unlink()
     driver.close()
+    p_led.kill()
     GPIO.cleanup()
 
 
@@ -152,6 +156,7 @@ if __name__ == "__main__":
 
     options = Options()
     options.add_argument('--kiosk')
+    # options.add_argument('--headless') # CLI test
     service = Service("/usr/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=options)
     driver.get(webpage_url)   

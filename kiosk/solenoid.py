@@ -32,6 +32,7 @@ if __name__ == "__main__":
         sol.box_open(0)
         sol.box_open(1)
         sol.box_open(2)
+        GPIO.cleanup()
 
     except KeyboardInterrupt:
         GPIO.cleanup()

@@ -35,22 +35,23 @@ import multiprocessing
 from multiprocessing import shared_memory
 import threading
 import requests
-import json
 from hc_sr04 import *
 import MFRC522_multi
 import multi_read
 
 # 센서 번호와 DB 자리 id 변환용 배열
-parkingSpotID = shared_memory.ShareableList([1, 2, 3])
+parkingSpotID = shared_memory.ShareableList([394, 395, 396])
 
 class Item(BaseModel):
-    ID: list[int]
+    ID: list
 
 app = FastAPI()
 
 @app.post("/change-id")
 async def changeID(item: Item):
     arr = item.ID[0]
+    if len(arr) != 3:
+        return False
     parkingSpotID[0] = arr[0]
     parkingSpotID[1] = arr[1]
     parkingSpotID[2] = arr[2]
@@ -74,7 +75,7 @@ status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])
 manager = multiprocessing.Manager()
 
 # rfid 센서 rst 핀 목록 배열 (BOARD)
-rfid = [23, 24, 25]
+rfid_pin = [23, 24, 25]
 
 # 초음파센서 클래스 객체 리스트 (BCM)
 us = manager.list()
@@ -165,10 +166,11 @@ def send(type, content):
             # 차량 주차 확인
             print("차량 주차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
             dic['isParking'] = True
-            dic['parkingSpotId'] = content[0]
+            dic['parkingSpotId'] = parkingSpotID[content[0]]
             # 자리 번호를 백엔드로 전송
             r = requests.post(url, json=dic)
             if r.status_code == 200:
+                status[content[0]] = 3
                 return True
             else:
                 log.append(dic)
@@ -178,7 +180,7 @@ def send(type, content):
             # 차량 출차 확인
             print("차량 출차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
             dic['isParking'] = False
-            dic['parkingSpotId'] = content[0]
+            dic['parkingSpotId'] = parkingSpotID[content[0]]
             # 자리 번호를 백엔드로 전송
             r = requests.post(url, json=dic)
             if r.status_code == 200:
@@ -191,7 +193,7 @@ def send(type, content):
             # 차량 주차 후 rfid 체크
             print("RFID 인식 : {}번 자리 | ID : {} | 시간 : {}".format(content[0], content[1], content[2]))
             dic['isRfidTagged'] = True
-            dic['parkingSpotId'] = content[0]
+            dic['parkingSpotId'] = parkingSpotID[content[0]]
             dic['rfid'] = content[1]
             # 읽힌 태그 id를 백엔드로 전송
             r = requests.post(url+'rfid/', json=dic)
@@ -199,6 +201,7 @@ def send(type, content):
                 status[content[0]] = 31
                 return True
             else:
+                status[content[0]] = 30
                 log.append(dic)
             
         return False
@@ -207,7 +210,7 @@ def send(type, content):
             # 차량 주차 후 일정시간동안 rfid 미체크
             print("RFID 미인식 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
             dic['isRfidTagged'] = False
-            dic['parkingSpotId'] = content[0]
+            dic['parkingSpotId'] = parkingSpotID[content[0]]
             dic['rfid'] = ''
             # 체크가 안된 자리 번호를 백엔드로 전송
             r = requests.post(url+'rfid/', json=dic)
@@ -215,6 +218,7 @@ def send(type, content):
                 status[content[0]] = 30
                 return True
             else:
+                status[content[0]] = 30
                 log.append(dic)
             
         return False
@@ -248,7 +252,7 @@ def detect(num):
             if n == 7:
                 status[num] = 2
                 t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-                s_t = threading.Thread(target=send, args=(10, (parkingSpotID[num], t)))
+                s_t = threading.Thread(target=send, args=(10, (num, t)))
                 s_t.start()
                 return
 
@@ -280,7 +284,7 @@ def ultrasonic():
                         status[i] = 0
                         n[i] = 0
                         t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-                        s_t = threading.Thread(target=send, args=(11, [parkingSpotID[i], t]))
+                        s_t = threading.Thread(target=send, args=(11, [i, t]))
                         s_t.start()
                 else:
                     n[i] = 0
@@ -293,7 +297,7 @@ def rfid():
     active_num = []
     last = [0 for i in range(SENSOR_NUM)]
     start_time = [-1 for i in range(SENSOR_NUM)]
-    RC522 = MFRC522_multi.MFRC522(rfid)
+    RC522 = MFRC522_multi.MFRC522(rfid_pin)
 
     while True:
         # 이전 상태와 현재 상태 비교, 필요한 처리를 한 후 현재 상태를 배열에 기록
@@ -311,28 +315,35 @@ def rfid():
         active_num.clear()
         for i in range(SENSOR_NUM):
             if status[i] == 3:
-                active_num.append(rfid[i])
-        result = multi_read.read(RC522, rfid)
+                active_num.append(rfid_pin[i])
+        result = multi_read.read(RC522, active_num)
 
         # result의 결과값에서 -1이 아닌 값만 처리
         for p in result:
-            index = rfid.index(p)
+            index = rfid_pin.index(p)
             if time.time() - start_time[index] > TIME_LIMIT:
                 t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-                s_t = threading.Thread(target=send, args=(21, [parkingSpotID[index], t]))
+                s_t = threading.Thread(target=send, args=(21, [index, t]))
                 s_t.start()
+                start_time[index] = time.time()
+                status[index] = 300
             if result[p] != -1:
                 print(f'sensor {index} : {result[p]}')
                 # 백엔드에 값을 보내서 확인하는 로직
                 t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-                s_t = threading.Thread(target=send, args=(20, [parkingSpotID[index], result[p], t]))
+                s_t = threading.Thread(target=send, args=(20, [index, result[p], t]))
                 s_t.start()
+                status[index] = 300
 
 
 def end_program(signal,frame):
-    print("Ctrl+C captured.")
     status.shm.close()
     status.shm.unlink()
+    parkingSpotID.shm.close()
+    parkingSpotID.shm.unlink()
+    p_led.kill()
+    p_us.kill()
+    p_rfid.kill()
     GPIO.cleanup()
 
 if __name__ == '__main__':

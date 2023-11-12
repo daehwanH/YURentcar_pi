@@ -17,7 +17,7 @@ def read(object, active_num_arr):
         # 인식 오류 대비 센서당 3번씩 인식
         for j in range(3):
             # Scan for cards
-            (status,TagType) = object.MFRC522_Request(RC522.PICC_REQIDL)
+            (status,TagType) = object.MFRC522_Request(object.PICC_REQIDL)
 
             # Get the UID of the card
             (status,uid) = object.MFRC522_Anticoll()
