@@ -24,6 +24,7 @@
 
 
 import RPi.GPIO as GPIO
+import signal
 
 import uvicorn
 from fastapi import FastAPI
@@ -39,15 +40,20 @@ from hc_sr04 import *
 import MFRC522_multi
 import multi_read
 
+# 센서 번호와 DB 자리 id 변환용 배열
+parkingSpotID = shared_memory.ShareableList([1, 2, 3])
 
 class Item(BaseModel):
     ID: list[int]
 
 app = FastAPI()
 
-@app.post("/change-id/")
+@app.post("/change-id")
 async def changeID(item: Item):
-    parkingSpotID = item.ID
+    arr = item.ID[0]
+    parkingSpotID[0] = arr[0]
+    parkingSpotID[1] = arr[1]
+    parkingSpotID[2] = arr[2]
     print(parkingSpotID)
     return True
 
@@ -66,9 +72,6 @@ url = ''                # 추후 백엔드 연결용 주소 저장 변수
 status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])
 
 manager = multiprocessing.Manager()
-
-# 센서 번호와 DB 자리 id 변환용 배열
-parkingSpotID = [1, 2, 3]
 
 # rfid 센서 rst 핀 목록 배열 (BOARD)
 rfid = [23, 24, 25]
@@ -154,73 +157,65 @@ def led():
 
 
 def send(type, content):
-    t = 3 # 통신 시도 횟수
+    t = 1 # 통신 시도 횟수
     dic = {}
 
     if type == 10:
         for i in range(t):
             # 차량 주차 확인
             print("차량 주차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['type'] = True
-            dic['site'] = content[0]
-            dic['time'] = content[1]
-            data = json.dumps(dic)
+            dic['isParking'] = True
+            dic['parkingSpotId'] = content[0]
             # 자리 번호를 백엔드로 전송
-            r = requests.post(url, data=data)
+            r = requests.post(url, json=dic)
             if r.status_code == 200:
                 return True
             else:
-                log.append(data)
+                log.append(dic)
         return False
     elif type == 11:
         for i in range(t):
             # 차량 출차 확인
             print("차량 출차 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['type'] = False
-            dic['site'] = content[0]
-            dic['time'] = content[1]
-            data = json.dumps(dic)
+            dic['isParking'] = False
+            dic['parkingSpotId'] = content[0]
             # 자리 번호를 백엔드로 전송
-            r = requests.post(url, data=data)
+            r = requests.post(url, json=dic)
             if r.status_code == 200:
                 return True
             else:
-                log.append(data)
+                log.append(dic)
         return False
     elif type == 20:
         for i in range(t):
             # 차량 주차 후 rfid 체크
             print("RFID 인식 : {}번 자리 | ID : {} | 시간 : {}".format(content[0], content[1], content[2]))
-            dic['type'] = True
-            dic['site'] = content[0]
-            dic['id'] = content[1]
-            dic['time'] = content[2]
-            data = json.dumps(dic)
+            dic['isRfidTagged'] = True
+            dic['parkingSpotId'] = content[0]
+            dic['rfid'] = content[1]
             # 읽힌 태그 id를 백엔드로 전송
-            r = requests.post(url+'rfid/', data=data)
+            r = requests.post(url+'rfid/', json=dic)
             if r.status_code == 200:
                 status[content[0]] = 31
                 return True
             else:
-                log.append(data)
+                log.append(dic)
             
         return False
     elif type == 21:
         for i in range(t):
             # 차량 주차 후 일정시간동안 rfid 미체크
             print("RFID 미인식 : {}번 자리 | 시간 : {}".format(content[0], content[1]))
-            dic['type'] = False
-            dic['site'] = content[0]
-            dic['id'] = ''
-            dic['time'] = content[1]
-            data = json.dumps(dic)
+            dic['isRfidTagged'] = False
+            dic['parkingSpotId'] = content[0]
+            dic['rfid'] = ''
             # 체크가 안된 자리 번호를 백엔드로 전송
-            r = requests.post(url+'rfid/', data=data)
+            r = requests.post(url+'rfid/', json=dic)
             if r.status_code == 200:
                 status[content[0]] = 30
                 return True
             else:
-                log.append(data)
+                log.append(dic)
             
         return False
     elif type == 30:
@@ -266,6 +261,7 @@ def ultrasonic():
     n = [0 for i in range(SENSOR_NUM)]
 
     while True:
+        print(parkingSpotID)
         for i in range(SENSOR_NUM):
             if status[i] == 0:
                 distance[i] = us[i].run()
@@ -333,23 +329,25 @@ def rfid():
                 s_t.start()
 
 
+def end_program(signal,frame):
+    print("Ctrl+C captured.")
+    status.shm.close()
+    status.shm.unlink()
+    GPIO.cleanup()
+
 if __name__ == '__main__':
-    try:
-        p_led = multiprocessing.Process(target=led)
-        p_us = multiprocessing.Process(target=ultrasonic)
-        p_rfid = multiprocessing.Process(target=rfid)
+    signal.signal(signal.SIGINT, end_program)
+    
+    p_led = multiprocessing.Process(target=led)
+    p_us = multiprocessing.Process(target=ultrasonic)
+    p_rfid = multiprocessing.Process(target=rfid)
 
-        p_led.start()
-        p_us.start()
-        p_rfid.start()
-        
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+    p_led.start()
+    p_us.start()
+    p_rfid.start()
+    
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
-        p_led.join()
-        p_us.join()
-        p_rfid.join()
-
-    except KeyboardInterrupt:
-        status.shm.close()
-        status.shm.unlink()
-        GPIO.cleanup()
+    p_led.join()
+    p_us.join()
+    p_rfid.join()

@@ -16,6 +16,7 @@
 
 
 import RPi.GPIO as GPIO
+import signal
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -61,26 +62,19 @@ async def rfid_activation():
     status[0] = 1
     return True
 
-@app.post("/rfid_return/")
+@app.post("/rfid-return")
 async def rfid_return():
-    info = rfid()
-    
-    dic = {}
-    dic['type'] = info[0]
-    dic['id'] = info[1]
-    dic['time'] = info[2]
-    data = json.dumps(dic)
-    
-    return data
+    print('rfid active')
+    return rfid()[0]
 
-@app.post("/receive-car-key/")
+@app.post("/receive-car-key")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
     print(item.num)
     print(type(item.num))
     background_tasks.add_task(sol.box_open, item.num)
     return  { 'box_number' : item }
 
-@app.post("/return-car-key/")
+@app.post("/return-car-key")
 async def boxopen(item: Item, background_tasks: BackgroundTasks):
     status[0] = 0
     print(item.num)
@@ -136,33 +130,36 @@ def rfid():
         if time.time() - start_time > TIME_LIMIT:
             status[0] = 0
             t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-            return [False, '', t]
+            return ['', t]
         if result != -1:
             print(f'sensor : {result}')
             status[0] = 0
             t = time.strftime('%Y-%m-%dT%I:%M:%S', time.localtime())
-            return [True, result, t]
+            return [result, t]
         time.sleep(0.5)
+        
+
+def end_program(signal,frame):
+    print("Ctrl+C captured.")
+    status.shm.close()
+    status.shm.unlink()
+    driver.close()
+    GPIO.cleanup()
 
 
 if __name__ == "__main__":
-    try:
-        options = Options()
-        options.add_argument('--kiosk')
-        service = Service("/usr/bin/chromedriver")
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.get(webpage_url)   
-        
-        p_led = multiprocessing.Process(target=led)
-        
-        p_led.start()
-        
-        uvicorn.run(app, host="0.0.0.0", port=8888)
-        
-        p_led.join()
+    signal.signal(signal.SIGINT, end_program)
 
-    except KeyboardInterrupt:
-        status.shm.close()
-        status.shm.unlink()
-        driver.close()
-        GPIO.cleanup()
+    options = Options()
+    options.add_argument('--kiosk')
+    service = Service("/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=options)
+    driver.get(webpage_url)   
+    
+    p_led = multiprocessing.Process(target=led)
+    
+    p_led.start()
+    
+    uvicorn.run(app, host="0.0.0.0", port=8888)
+    
+    p_led.join()

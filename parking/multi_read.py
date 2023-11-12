@@ -36,7 +36,6 @@ if __name__ == "__main__":
         print("Ctrl+C captured.")
         GPIO.cleanup()
 
-
     sensor_name = ['센서0', '센서1', '센서2']
 
     # Hook the SIGINT

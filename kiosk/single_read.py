@@ -29,7 +29,6 @@ if __name__ == "__main__":
         print("Ctrl+C captured.")
         GPIO.cleanup()
 
-
     signal.signal(signal.SIGINT, end_read)
 
     # Create an object of the class MFRC522
