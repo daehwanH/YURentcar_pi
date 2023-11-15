@@ -42,10 +42,10 @@ import multi_read
 # 센서 번호와 DB 자리 id 변환용 배열
 parkingSpotID = shared_memory.ShareableList([394, 395, 396])
 
+app = FastAPI()
+
 class Item(BaseModel):
     ID: list
-
-app = FastAPI()
 
 @app.post("/change-id")
 async def changeID(item: Item):
@@ -67,7 +67,8 @@ SENSOR_NUM = 3          # 주차장 자리(센서)의 수
 TIME_LIMIT = 7          # 프로토타입 RFID 리더기 인식 제한 시간
 
 
-url = ''                # 추후 백엔드 연결용 주소 저장 변수
+# url = ''                # 추후 백엔드 연결용 주소 저장 변수
+url = 'http://localhost:8000' # 로컬 테스트용 주소
 
 # 상태값 저장 리스트
 status = shared_memory.ShareableList([0 for i in range(SENSOR_NUM)])

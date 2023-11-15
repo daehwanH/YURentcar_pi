@@ -18,9 +18,9 @@
 import RPi.GPIO as GPIO
 import signal
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+# from selenium import webdriver
+# from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.options import Options
 
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI
@@ -28,7 +28,6 @@ from pydantic import BaseModel
 
 import multiprocessing
 from multiprocessing import shared_memory
-import json
 
 from solenoid import *
 import MFRC522_single
@@ -39,12 +38,12 @@ import single_read
 TIME_LIMIT = 10          # 프로토타입 RFID 리더기 인식 제한 시간
 
 
-webpage_url = 'https://google.com/'
+# webpage_url = 'https://google.com/'
 box = [14, 15, 18]
 box_led = [2, 3, 4]
 sol = solenoid(box, box_led)
 
-# 상태 저장 리스트 [ led 상태(0, 1, 10, 11, 2) ]
+# 상태 저장 리스트 [ led 상태(0, 1) ]
 status = shared_memory.ShareableList([0]);
 
 manager = multiprocessing.Manager()
@@ -57,7 +56,6 @@ class Item(BaseModel):
     slotNumber: list
 
 app = FastAPI()
-
 
 @app.post("/rfid-return")
 async def rfid_return():
@@ -154,12 +152,12 @@ def end_program(signal,frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, end_program)
 
-    options = Options()
-    options.add_argument('--kiosk')
+    # options = Options()
+    # options.add_argument('--kiosk')
     # options.add_argument('--headless') # CLI test
-    service = Service("/usr/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=options)
-    driver.get(webpage_url)   
+    # service = Service("/usr/bin/chromedriver")
+    # driver = webdriver.Chrome(service=service, options=options)
+    # driver.get(webpage_url)   
     
     p_led = multiprocessing.Process(target=led)
     
